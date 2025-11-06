@@ -1,0 +1,347 @@
+--# Lesson 22: Aggregated Window Functions
+
+--## Easy Questions
+
+--1. **Compute Running Total Sales per Customer**
+
+SELECT 
+    customer_id,
+    customer_name,
+    order_date,
+    total_amount,
+    SUM(total_amount) OVER (PARTITION BY customer_id ORDER BY order_date) AS running_total
+FROM sales_data;
+
+--2. **Count the Number of Orders per Product Category**
+
+SELECT 
+    product_category,
+    COUNT(*) AS order_count
+FROM sales_data
+GROUP BY product_category;
+
+--3. **Find the Maximum Total Amount per Product Category**
+
+SELECT 
+    product_category,
+    MAX(total_amount) AS max_sale
+FROM sales_data
+GROUP BY product_category;
+
+--4. **Find the Minimum Price of Products per Product Category**
+
+SELECT 
+    product_category,
+    MIN(unit_price) AS min_price
+FROM sales_data
+GROUP BY product_category;
+
+--5. **Compute the Moving Average of Sales of 3 days (prev day, curr day, next day)**
+
+SELECT 
+    order_date,
+    total_amount,
+    AVG(total_amount) OVER (
+        ORDER BY order_date
+        ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+    ) AS moving_avg_3days
+FROM sales_data;
+
+--6. **Find the Total Sales per Region**
+
+SELECT 
+    region,
+    SUM(total_amount) AS total_sales
+FROM sales_data
+GROUP BY region;
+
+--7. **Compute the Rank of Customers Based on Their Total Purchase Amount**
+
+SELECT 
+    customer_id,
+    customer_name,
+    SUM(total_amount) AS total_purchase,
+    RANK() OVER (ORDER BY SUM(total_amount) DESC) AS rank_customer
+FROM sales_data
+GROUP BY customer_id, customer_name;
+
+--8. **Calculate the Difference Between Current and Previous Sale Amount per Customer**
+
+SELECT 
+    customer_id,
+    order_date,
+    total_amount,
+    total_amount - LAG(total_amount) OVER (PARTITION BY customer_id ORDER BY order_date) AS diff_prev_sale
+FROM sales_data;
+
+--9. **Find the Top 3 Most Expensive Products in Each Category**
+
+SELECT *
+FROM (
+    SELECT 
+        product_category,
+        product_name,
+        unit_price,
+        RANK() OVER (PARTITION BY product_category ORDER BY unit_price DESC) AS rnk
+    FROM sales_data
+) t
+WHERE rnk <= 3;
+
+--10. **Compute the Cumulative Sum of Sales Per Region by Order Date**
+
+SELECT 
+    region,
+    order_date,
+    SUM(total_amount) OVER (PARTITION BY region ORDER BY order_date) AS cumulative_sales
+FROM sales_data;
+
+---
+
+--## Medium Questions
+
+--11. **Compute Cumulative Revenue per Product Category**
+
+SELECT 
+    product_category,
+    order_date,
+    SUM(total_amount) OVER (PARTITION BY product_category ORDER BY order_date) AS cumulative_revenue
+FROM sales_data;
+
+--12. **Here you need to find out the sum of previous values. Please go through the sample input and expected output.**
+
+SELECT 
+    ID,
+    SUM(ID) OVER (ORDER BY ID ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS SumPreValues
+FROM (VALUES (1), (2), (3), (4), (5)) AS t(ID);
+
+--**Sample Input**
+--```
+--| ID |
+--|----|
+--|  1 |
+--|  2 |
+--|  3 |
+--|  4 |
+--|  5 |
+--```
+
+--**Expected Output**
+--```
+--| ID | SumPreValues |
+--|----|--------------|
+--|  1 |            1 |
+--|  2 |            3 |
+--|  3 |            6 |
+--|  4 |           10 |
+--|  5 |           15 |
+--```
+-----
+
+--13. **Sum of Previous Values to Current Value**
+
+SELECT 
+    Value,
+    SUM(Value) OVER (ORDER BY Value ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS [Sum of Previous]
+FROM OneColumn;
+
+--**Sample Input**
+--```
+--| Value |
+--|-------|
+--|    10 |
+--|    20 |
+--|    30 |
+--|    40 |
+--|   100 |
+--```
+--**Expected Output**
+--```
+--| Value | Sum of Previous |
+--|-------|-----------------|
+--|    10 |              10 |
+--|    20 |              30 |
+--|    30 |              50 |
+--|    40 |              70 |
+--|   100 |             140 |
+--```
+-----
+
+--14. **Find customers who have purchased items from more than one product_category**
+
+SELECT 
+    customer_id,
+    customer_name
+FROM sales_data
+GROUP BY customer_id, customer_name
+HAVING COUNT(DISTINCT product_category) > 1;
+
+--15. **Find Customers with Above-Average Spending in Their Region**
+
+SELECT *			
+FROM (			
+SELECT			
+  customer_id,
+  customer_name,
+  region,
+  SUM(total_amount) AS customer_total,
+  AVG(SUM(total_amount)) OVER (PARTITION BY region) AS avg_region_spending
+FROM sales_data
+GROUP BY customer_id, customer_name, region
+) t
+WHERE customer_total > avg_region_spending;
+--16. **Rank customers based on their total spending (total_amount) within each region. If multiple customers have the same spending, they should receive the same rank.**
+
+SELECT 
+    region,
+    customer_id,
+    customer_name,
+    SUM(total_amount) AS total_spent,
+    RANK() OVER (PARTITION BY region ORDER BY SUM(total_amount) DESC) AS regional_rank
+FROM sales_data
+GROUP BY region, customer_id, customer_name;
+
+--17. **Calculate the running total (cumulative_sales) of total_amount for each customer_id, ordered by order_date.**
+
+SELECT 
+    customer_id,
+    order_date,
+    total_amount,
+    SUM(total_amount) OVER (PARTITION BY customer_id ORDER BY order_date) AS cumulative_sales
+FROM sales_data;
+
+--18. **Calculate the sales growth rate (growth_rate) for each month compared to the previous month.**
+
+WITH monthly AS (
+  SELECT FORMAT(order_date, 'yyyy-MM') AS month,
+         SUM(total_amount) AS monthly_sales
+  FROM sales_data
+  GROUP BY FORMAT(order_date, 'yyyy-MM')
+)
+SELECT 
+    month,
+    monthly_sales,
+    LAG(monthly_sales) OVER (ORDER BY month) AS prev_month_sales,
+    ROUND((monthly_sales - LAG(monthly_sales) OVER (ORDER BY month)) 
+         / NULLIF(LAG(monthly_sales) OVER (ORDER BY month), 0) * 100, 2) AS growth_rate
+FROM monthly;
+
+--19. **Identify customers whose total_amount is higher than their last order''s total_amount.(Table sales_data)**
+
+SELECT *
+FROM (
+  SELECT 
+      customer_id,
+      customer_name,
+      order_date,
+      total_amount,
+      LAG(total_amount) OVER (PARTITION BY customer_id ORDER BY order_date) AS prev_amount
+  FROM sales_data
+) t
+WHERE total_amount > prev_amount;
+-----
+
+--## Hard Questions
+
+--20. **Identify Products that prices are above the average product price**
+
+SELECT 
+    product_name,
+    unit_price
+FROM sales_data
+WHERE unit_price > (SELECT AVG(unit_price) FROM sales_data);
+
+--21. **In this puzzle you have to find the sum of val1 and val2 for each group and put that value at the beginning of the group in the new column. The challenge here is to do this in a single select. For more details please see the sample input and expected output.**
+
+SELECT 
+    Id,
+    Grp,
+    Val1,
+    Val2,
+    CASE WHEN ROW_NUMBER() OVER (PARTITION BY Grp ORDER BY Id) = 1 
+         THEN SUM(Val1 + Val2) OVER (PARTITION BY Grp)
+    END AS Tot
+FROM MyData;
+
+--**Sample Input**
+--```
+--| Id  | Grp | Val1 | Val2 |  
+--|-----|-----|------|------|  
+--|  1  |  1  |   30 |   29 |  
+--|  2  |  1  |   19 |    0 |  
+--|  3  |  1  |   11 |   45 |  
+--|  4  |  2  |    0 |    0 |  
+--|  5  |  2  |  100 |   17 |
+--```
+
+
+--**Expected Output**
+--```
+--| Id | Grp | Val1 | Val2 | Tot  |
+--|----|-----|------|------|------|
+--| 1  | 1   | 30   | 29   | 134  |
+--| 2  | 1   | 19   | 0    | NULL |
+--| 3  | 1   | 11   | 45   | NULL |
+--| 4  | 2   | 0    | 0    | 117  |
+--| 5  | 2   | 100  | 17   | NULL |
+---
+
+--22. **Here you have to sum up the value of the cost column based on the values of Id. For Quantity if values are different then we have to add those values.Please go through the sample input and expected output for details.**
+
+SELECT 
+    ID,
+    SUM(Cost) AS Cost,
+    CASE 
+        WHEN COUNT(DISTINCT Quantity) > 1 THEN SUM(Quantity)
+        ELSE MAX(Quantity)
+    END AS Quantity
+FROM TheSumPuzzle
+GROUP BY ID;
+
+--**Sample Input**
+--```
+--| Id   | Cost | Quantity |  
+--|------|------|----------|  
+--| 1234 |   12 |      164 |  
+--| 1234 |   13 |      164 |  
+--| 1235 |  100 |      130 |  
+--| 1235 |  100 |      135 |  
+--| 1236 |   12 |      136 | 
+--```
+
+--**Expected Output**
+--```
+--| Id   | Cost | Quantity |
+--|------|------|----------|
+--| 1234 | 25   | 164      |
+--| 1235 | 200  | 265      |
+--| 1236 | 12   | 136      |
+--```
+-----
+
+--23. **From following set of integers, write an SQL statement to determine the expected outputs**
+
+WITH SeatDiffs AS (
+    SELECT 
+        SeatNumber,
+        LAG(SeatNumber) OVER (ORDER BY SeatNumber) AS prev_seat
+    FROM Seats
+)
+SELECT 
+    CASE 
+        WHEN ROW_NUMBER() OVER (ORDER BY SeatNumber) = 1 
+            THEN 1 
+        ELSE prev_seat + 1 
+    END AS [Gap Start],
+    SeatNumber - 1 AS [Gap End]
+FROM SeatDiffs
+WHERE SeatNumber - ISNULL(prev_seat, 0) > 1;
+
+--**Output:**
+-----------------------
+--|Gap Start	|Gap End|
+-----------------------
+--|     1     |	6	|
+--|     8     |	12	|
+--|     16    |	26	|
+--|     36    |	51	|
+-----------------------
